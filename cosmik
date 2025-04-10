@@ -1,0 +1,126 @@
+#!/usr/bin/env bash
+
+BASE_DIR="$(dirname "$(realpath "${BASH_SOURCE[0]}")")"
+
+if [ ! -f "${BASE_DIR:-.}/.env" ]; then
+  echo ".env missing -> CI context"
+fi
+
+source "${BASE_DIR:-.}/client/scripts/include.sh" client
+
+yaml_files=(
+  "${BASE_DIR:-.}/client/targets/cosmik_log.yaml"
+  "${BASE_DIR:-.}/client/targets/cosmik_requirements.yaml"
+  "${BASE_DIR:-.}/client/targets/cosmik_test.yaml"
+)
+
+declare -A COSMIK_YAML
+for file in "${yaml_files[@]}"; do
+  COSMIK_YAML["$(get_command_name "$file")"]=$(yq e '.' "$file")
+done
+
+# cosmik [Command]
+function cosmik() {
+  (
+    local command="$1"
+    local subcommand="$2"
+
+    if [ -f "${BASE_DIR:-.}/.env" ]; then
+      source "${BASE_DIR:-.}/.env"
+    fi
+
+    if [ -z "$command" ]; then
+      command=help
+    fi
+
+    if [ "$command" = "help" ]; then
+      for help_command in "${!COSMIK_YAML[@]}"; do
+        print_help "$help_command"
+      done
+
+      print success 'cosmik [command] [sub-command]'
+
+      return
+    fi
+
+    if [[ -z "${COSMIK_YAML[$command]}" ]]; then
+      print error "Unknown command: $command"
+
+      return 1
+    fi
+
+    if ! yq e ".targets | has(\"$subcommand\")" - <<< "${COSMIK_YAML[$command]}" | grep -q "true"; then
+      if [ -z "$subcommand" ]; then
+        subcommand=help
+      fi
+
+      if [ "$subcommand" = "help" ]; then
+        print_help "$command"
+
+        return
+      fi
+
+      print error "Unknown subcommand: $subcommand"
+
+      return 1
+    fi
+
+    mapfile -t env_vars < <(yq e ".variables | to_entries | .[] | .key + \"=\" + .value" -<<< "${COSMIK_YAML[$command]}")
+    for env_var in "${env_vars[@]}"; do
+      eval "export $env_var"
+    done
+
+    # Load parameters in environment variables:
+    mapfile -t parameters < <(yq e ".targets.$subcommand.parameters | .[]" -<<< "${COSMIK_YAML[$command]}")
+    valid_args=$(IFS=" "; echo "${parameters[*]}")
+    extract_arguments --valid="$valid_args" -- "${@:3}"
+
+    # Set additional environment variables:
+    mapfile -t env_vars < <(yq e ".targets.$subcommand.variables | to_entries | .[] | .key + \"=\" + .value" -<<< "${COSMIK_YAML[$command]}")
+    for env_var in "${env_vars[@]}"; do
+      eval "export $env_var"
+    done
+
+    # Include dependencies:
+    mapfile -t includes < <(yq e ".targets.$subcommand.include[]" -<<< "${COSMIK_YAML[$command]}")
+    for include_name in "${includes[@]}"; do
+      include $include_name
+    done
+
+    # Evaluate script:
+    script=$(yq e ".targets.$subcommand.script" -<<< "${COSMIK_YAML[$command]}")
+    if [[ "$script" == "null" ]]; then
+      print error "Section 'script' is missing in targets.$subcommand for command $command"
+      return 1
+    fi
+
+    eval "$script"
+  )
+}
+
+if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
+  cosmik "$@"
+fi
+
+cosmik_complete() {
+  if [[ $COMP_CWORD -eq 1 ]]; then
+    local commands=()
+
+    for command in "${!COSMIK_YAML[@]}"; do
+      commands+=("$command")
+    done
+
+    mapfile -t COMPREPLY < <(compgen -W "${commands[*]}" -- "${COMP_WORDS[1]}")
+  elif [[ $COMP_CWORD -eq 2 ]]; then
+    for command in "${!COSMIK_YAML[@]}"; do
+      if [[ "${COMP_WORDS[1]}" == "$command" ]]; then
+        mapfile -t subcommands < <(yq e ".targets | keys | .[]" -<<< "${COSMIK_YAML[$command]}")
+        break
+      fi
+    done
+
+    mapfile -t COMPREPLY < <(compgen -W "${subcommands[*]}" -- "${COMP_WORDS[2]}")
+  fi
+}
+
+complete -F cosmik_complete cosmik

@@ -1,0 +1,42 @@
+description: Tests
+
+variables: { }
+
+targets:
+  output:
+    description: Some test output
+    include: [ "run" ]
+    script: |
+      cosmik log clear
+      
+      name=$(print input "What's your name?" --default="Hans" --hint="If you’re unsure, check your ID or bank card.")
+      
+      print info "Info"
+      
+      print progress "Progress 1..."
+      
+      answer=$(print select "Foo, Bar or Baz?" --default="Baz" --hint="Choose wisely!" -- "Foo" "Bar")
+      if [ "$answer" = "Foo" ]
+      then
+        print note "Answer from $name is Foo"
+      elif [ "$answer" = "Bar" ]
+      then
+        print note "Answer from $name is Bar"
+      elif [ "$answer" = "Baz" ]
+      then
+        print note "Answer from $name is Baz"
+      fi
+      
+      print progress-ok # Nothing happens because of the note output
+      run echo Output 1
+      run echo Output 2
+      
+      print progress "Progress 2..."
+      run "echo \"Error 1\" >&2 && echo \"NAME: $name\" && echo \"Error 2\" >&2"
+      print progress-ok # Nothing happens because of the run output to the log
+      
+      print progress "Progress 3..."
+      print progress-ok
+      
+      print success "Success"
+      print hint "See details with \"cosmik log show\""
