@@ -1,0 +1,26 @@
+description: Requirements
+
+variables: { }
+
+targets:
+  check:
+    description: Check requirements for local kubernetes development
+    include: [ "requirements" ]
+    script: |
+      cosmik requirements check_hosts
+      print info "Check requirements for local kubernetes development..."
+      
+      test_command docker git jq yq kind helm kubectl tsc mc || exit 0
+      
+      kubectl_version=$(kubectl version --client=true --output=yaml | awk '/gitVersion/{sub("  gitVersion: v", ""); print}')
+      test_version kubectl "1.32.3" "$kubectl_version" || exit 0
+
+  check_hosts:
+    description: Check for needed hosts file entries
+    include: [ "requirements" ]
+    script: |
+      print info "Check for hosts file entries..."
+      test_hosts \
+        "foo.example.local" \
+        "bar.example.local" \
+        "baz.example.local"

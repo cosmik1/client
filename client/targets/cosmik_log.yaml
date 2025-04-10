@@ -1,0 +1,35 @@
+description: Log
+
+variables:
+  LOG_FILE: $(realpath $BASE_DIR)/cosmik.log
+
+targets:
+  show:
+    description: Detailed script outputs
+    script: |
+      cosmik log create
+      tail -n 500 -F "$LOG_FILE" 2>/dev/null
+
+  show_new:
+    description: Show cosmik.log updates
+    script: |
+      cosmik log create
+      tail -n 0 -F "$LOG_FILE" 2>/dev/null
+
+  create:
+    description: Creates a fresh log file
+    script: |
+      if [ ! -e "$LOG_FILE" ]; then
+        touch "$LOG_FILE"
+      fi
+
+  clear:
+    description: Delete log file
+    script: |
+      print info "Delete \"$LOG_FILE\"..."
+      
+      if [ ! -e "$LOG_FILE" ]; then
+        print progress "File not exists"
+      else
+        rm -f "$LOG_FILE"
+      fi
