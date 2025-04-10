@@ -38,7 +38,7 @@ function cosmik() {
         print_help "$help_command"
       done
 
-      print success 'Run "cosmik kind setup" to initialize or update your local cluster.'
+      print success 'cosmik [command] [sub-command]'
 
       return
     fi
